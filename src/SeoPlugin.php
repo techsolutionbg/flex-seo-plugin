@@ -39,30 +39,6 @@ final class SeoPlugin implements PluginInterface, BootablePluginInterface, Updat
     {
         $name = is_string($context->manifest['name'] ?? null) ? $context->manifest['name'] : 'Flex SEO';
         $this->signature = trim($name . ' ' . $context->version);
-        $context->pageFields?->text('seo_title', 'SEO заглавие', '', 'Заглавие в резултатите от търсене. Празно поле използва шаблона от настройките на SEO.', 190);
-        $context->pageFields?->textarea('meta_description', 'Meta описание', '', 'Описание в резултатите от търсене, препоръчително 70–160 символа. Празно поле използва началото на съдържанието.', 320);
-        $context->pageFields?->text('focus_keyword', 'Основна ключова дума', '', 'Използва се само за проверките в раздел SEO.', 190);
-        $context->pageFields?->text('og_title', 'Заглавие за социални мрежи', '', 'Open Graph заглавие при споделяне. Празно поле използва SEO заглавието.', 190);
-        $context->pageFields?->textarea('og_description', 'Описание за социални мрежи', '', 'Open Graph описание при споделяне. Празно поле използва meta описанието.', 320);
-        $context->pageFields?->text('canonical_url', 'Canonical URL', '', 'Само ако съдържанието е копие на друга страница. Път като /about или пълен адрес.', 500);
-        $context->pageFields?->values(static function (int $pageId): array {
-            try {
-                return array_intersect_key((new SeoStore())->get('page', $pageId), SeoStore::FIELDS);
-            } catch (\Throwable) {
-                return [];
-            }
-        });
-        $save = static function (ExtensionEventInterface $event) use ($context): void {
-            if (!$event instanceof PageEvent || !is_int($event->page['id'] ?? null)) {
-                return;
-            }
-            $values = array_intersect_key($event->fields[$context->id] ?? [], SeoStore::FIELDS);
-            if ($values !== []) {
-                (new SeoStore())->save('page', $event->page['id'], $values, true);
-            }
-        };
-        $context->api->listen(EventNames::PAGE_CREATED, $save);
-        $context->api->listen(EventNames::PAGE_UPDATED, $save);
         $context->api->listen(EventNames::PAGE_DELETED, static function (ExtensionEventInterface $event): void {
             if ($event instanceof PageEvent && is_int($event->page['id'] ?? null)) {
                 (new SeoStore())->delete('page', $event->page['id']);
@@ -83,12 +59,25 @@ final class SeoPlugin implements PluginInterface, BootablePluginInterface, Updat
         $context->routes?->publicRoute('GET', '/sitemap.xml', SitemapController::class, 'sitemap');
         $context->routes?->publicRoute('GET', '/robots.txt', RobotsController::class, 'robots');
         $context->routes?->admin('GET', '/items', AdminController::class, 'items');
-        foreach (['page', 'product'] as $type) {
+        foreach (SeoStore::TYPES as $type) {
             $context->routes?->admin(['GET', 'PUT'], '/items/' . $type . '/{id:number}', AdminController::class, 'item-' . $type);
             $context->routes?->admin('POST', '/items/' . $type . '/{id:number}/preview', AdminController::class, 'preview-' . $type);
+            $context->routes?->admin('POST', '/items/' . $type . '/new/preview', AdminController::class, 'preview-new-' . $type);
         }
         $context->routes?->admin(['GET', 'PUT'], '/settings', AdminController::class, 'settings');
-        $context->admin?->page('seo', 'SEO', 'assets/admin.js', false, ['group' => 'content', 'icon' => 'file-text', 'order' => 40]);
+
+        // SEO lives inside the platform screens: editors, the pages list and Settings → SEO.
+        $context->admin?->panel('page.editor', 'meta', 'SEO', 'assets/panels.js', ['icon' => 'file-text', 'order' => 10]);
+        $context->admin?->panel('pages.list.column', 'score', 'SEO', 'assets/panels.js');
+        $context->admin?->panel('settings.tab', 'settings', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
+        $context->admin?->panel('commerce.product.editor', 'product', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
+        $context->admin?->panel('commerce.category.editor', 'category', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
+        // Flex Commerce removes products and categories permanently from the trash.
+        $context->api->addAction('commerce.catalog.deleted', static function (array $deleted): void {
+            if (in_array($deleted['kind'] ?? null, ['product', 'category'], true) && is_int($deleted['id'] ?? null)) {
+                (new SeoStore())->delete($deleted['kind'], $deleted['id']);
+            }
+        });
     }
 
     /** @param array<string, mixed> $context @return array<string, mixed>|null */

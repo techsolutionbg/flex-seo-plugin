@@ -2,7 +2,7 @@
 
 Search engine optimisation for Flex CMS: titles, meta descriptions, canonical URLs, Open Graph and X (Twitter) cards, Schema.org structured data, `sitemap.xml`, `robots.txt` and content checks for pages and Flex Commerce products.
 
-Version: **0.2.0** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.59**.
+Version: **0.3.0** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.59**.
 
 GitHub repository: `techsolutionbg/flex-seo-plugin`.
 
@@ -25,14 +25,15 @@ Version 0.1.x stored values in `data/seo.json`. On update the values are importe
 
 ## What it adds
 
-- SEO fields in the page editor.
-- An administration page **SEO** in the content group, with an overview, an editor and settings.
+- An **SEO** section in the page editor, the Flex Commerce product editor and the category editor, with live previews and checks.
+- An **SEO** column with the rating of every page in the pages list.
+- A **Settings → SEO** tab with the global settings and a site check.
 - Tags in the public `<head>` of pages and storefront pages.
 - `/sitemap.xml` and `/robots.txt` at the site root.
 
 ## Fields
 
-Each page and product can have:
+Each page, product and category can have:
 
 | Field | Maximum | When empty |
 | --- | ---: | --- |
@@ -44,7 +45,7 @@ Each page and product can have:
 | Social image | media library image | The featured image, the first product image or the default image |
 | Canonical URL | 500 | The page's own public address |
 
-The canonical URL accepts a site path such as `/about` or an HTTP/HTTPS address. Products are edited only on the **SEO** page; pages can also be edited in the page editor. Whether a page is indexed comes from the core page setting `no_index` (the "do not index" checkbox in the page settings). Pages whose core setting `show_in_sitemap` is `false` are left out of the sitemap.
+The canonical URL accepts a site path such as `/about` or an HTTP/HTTPS address. All values are edited in the SEO section of the record's own editor. Whether a page is indexed comes from the core page setting `no_index` (the "do not index" checkbox in the page settings). Pages whose core setting `show_in_sitemap` is `false` are left out of the sitemap.
 
 ## Output in `<head>`
 
@@ -61,7 +62,7 @@ Through the `public.head` and `public.title` filters the plugin adds:
   - `BreadcrumbList` on other pages, categories and products
   - `Product` with `Offer` (price, currency, availability, SKU, images) on product pages
 
-The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.2.0 -->` and `<!-- / Flex SEO 0.2.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
+The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.3.0 -->` and `<!-- / Flex SEO 0.3.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
 
 Absolute URLs use the **Site address** setting, then `APP_URL`, then the address of the request.
 
@@ -78,25 +79,23 @@ Each type can be switched off in the settings. `lastmod` comes from the last upd
 
 ## Administration
 
-The **SEO** page shows every page and product with a rating (**Good**, **Warnings**, **Problems**), filters by type and rating, and a search. Opening an item shows its fields next to:
+Flex SEO has no separate page. It uses the platform's admin panels (Flex CMS 0.1.59+), so administrators work where they edit content:
 
-- a search result preview
-- a social card preview
-- the list of checks
-
-Both previews update while typing, without saving.
+- **Page, product and category editors:** an **SEO** section with the fields, a rating summary, a search result preview, a social card preview and the list of checks. The previews and checks use the unsaved title, address, content, price and images while the user types, also for a record that is not saved yet. The SEO values are saved with the editor's own **Save** button, right after the record; a record without SEO changes writes nothing.
+- **Pages list:** an **SEO** column with the rating; the tooltip lists the remarks, and the column can be sorted.
+- **Settings → SEO:** the global settings and **Site check**, every page, product and category with its rating, filters by type and rating and a search. **Edit SEO** opens the record's editor.
 
 The checks cover:
 
 - title length (30–60 characters) and description length (70–160)
 - a missing description
-- titles or descriptions shared with another page or product
+- titles or descriptions shared with another page, product or category
 - the focus keyword in the title, description, H1, start of the content and the address; Cyrillic keywords also match transliterated addresses
 - a missing social image
 - a page hidden from search engines but shown in the navigation
 - a canonical URL on another domain
 
-**Settings** cover:
+**Settings → SEO** covers:
 
 - the title template and home page title
 - the default social image
@@ -111,8 +110,10 @@ Routes are relative to `/admin/plugins/flex/seo` and protected by the platform a
 
 | Method and path | Action |
 | --- | --- |
-| `GET /items` | Overview with `type`, `status`, `q` and `page` parameters |
-| `GET /items/{page\|product}/{id}` | Values, previews and checks |
+| `GET /items` | Overview with `type` (`page`, `product`, `category`), `status`, `q`, `page` and `per_page` (up to 1000) |
+| `GET /items/{type}/{id}` | Values, previews and checks |
+| `PUT /items/{type}/{id}` | Save values |
+| `POST /items/{type}/{id|new}/preview` | Previews and checks for unsaved SEO values; `source` carries the unsaved record values ||product}/{id}` | Values, previews and checks |
 | `PUT /items/{page\|product}/{id}` | Save values |
 | `POST /items/{page\|product}/{id}/preview` | Previews and checks for unsaved values |
 | `GET /settings` / `PUT /settings` | Read or save settings |
@@ -121,23 +122,24 @@ Validation errors return 422 and missing items 404. JSON responses use `Cache-Co
 
 ## Data and uninstalling
 
-Values are stored in `flex_seo_meta`, one row per page or product. Settings are stored in `flex_seo_settings`. Deleting a page removes its row. Deactivation keeps all data and stops the output. Uninstalling drops both tables only when **Delete SEO data on uninstall** is enabled. Back up these tables together with the platform database.
+Values are stored in `flex_seo_meta`, one row per page, product or category. Settings are stored in `flex_seo_settings`. Deleting a page removes its row; permanently deleting a product or category in Flex Commerce 0.2.6+ removes its row through the `commerce.catalog.deleted` action. Deactivation keeps all data and stops the output. Uninstalling drops both tables only when **Delete SEO data on uninstall** is enabled. Back up these tables together with the platform database.
 
 ## Structure
 
 ```text
 plugin.json                 Version, permissions, autoload and assets
-src/SeoPlugin.php           Registration, page fields, events, filters and routes
+src/SeoPlugin.php           Registration, admin panels, events, filters and routes
 src/SeoStore.php            Schema, validation, settings and 0.1.x migration
 src/SeoSite.php             Site name, locale, addresses, images and page paths
 src/SeoResolver.php         Effective values, Open Graph and JSON-LD
 src/HeadRenderer.php        Escaped <head> markup
 src/SeoAnalyzer.php         Content checks
-src/SeoItems.php            Pages and products for the administration and sitemap
+src/SeoItems.php            Pages, products and categories for the administration and sitemap
 src/SitemapController.php   /sitemap.xml
 src/RobotsController.php    /robots.txt
 src/AdminController.php     Administrative JSON API
-assets/admin.js             Administration page
+assets/panels.js            Admin panels: editor section, settings tab and pages list column
+assets/components.js        Shared administration components
 assets/admin.css            Administration styles
 tests/                      PHP and JavaScript tests
 ```
@@ -148,13 +150,13 @@ Run from the Flex CMS root with Composer dependencies installed:
 
 ```sh
 docker compose exec -T app vendor/bin/phpunit plugins/flex/seo/tests/SeoTest.php
-node --test plugins/flex/seo/tests/admin.test.mjs
+node --test plugins/flex/seo/tests/panels.test.mjs
 ```
 
-The PHP tests use SQLite in memory. When this README was written, **12 PHP tests with 100 assertions** and **4 JavaScript tests** passed.
+The PHP tests use SQLite in memory. When this README was written, **15 PHP tests with 117 assertions** and **5 JavaScript tests** passed.
 
 ## Package boundaries
 
-The plugin uses Flex CMS classes and services and is not a standalone PHP application. Product and category output needs Flex Commerce 0.2.5 or later, which passes the storefront context to the filters. Multilingual `hreflang` tags, image sitemaps, redirects and search engine submission are not implemented.
+The plugin uses Flex CMS classes and services and is not a standalone PHP application. Product and category output needs Flex Commerce 0.2.5 or later, which passes the storefront context to the filters; the SEO section in the Commerce editors needs Flex Commerce 0.2.6. Multilingual `hreflang` tags, image sitemaps, redirects and search engine submission are not implemented.
 
 This plugin is licensed under the GNU General Public License, version 2 or (at your option) any later version (`GPL-2.0-or-later`). The full text of version 2 is in [`LICENSE`](LICENSE).

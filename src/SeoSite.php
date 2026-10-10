@@ -113,7 +113,13 @@ final class SeoSite
         }
         $model = $id > 0 ? $this->pageSet()?->findPublishedById($id) : null;
 
-        return '/' . ($model instanceof Page ? $this->pageSet()->publicPath($model) : trim((string) ($page['slug'] ?? ''), '/'));
+        $slug = trim((string) ($page['slug'] ?? ''), '/');
+        // An unsaved slug from the editor wins over the published path.
+        if ($model instanceof Page && $model->getAttribute('slug') === $slug) {
+            return '/' . $this->pageSet()->publicPath($model);
+        }
+
+        return '/' . $slug;
     }
 
     /** @return list<array{title: string, path: string}> Published ancestors, nearest last. */

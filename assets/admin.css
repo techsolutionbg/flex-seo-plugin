@@ -1,7 +1,7 @@
 /* Flex SEO administration. Colours come from the admin theme tokens so light and dark modes both work. */
 .seo-edit { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 24px; align-items: start; }
-.seo-edit > form > fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
-.seo-edit > form > fieldset > * + * { margin-top: 1.25rem; }
+
+
 .seo-fields { display: grid; gap: 16px; }
 .seo-side { display: grid; gap: 16px; position: sticky; top: 16px; }
 @media (max-width: 960px) { .seo-edit { grid-template-columns: minmax(0, 1fr); } .seo-side { position: static; } }
@@ -51,3 +51,12 @@
 .seo-filters > .react-form-field { flex: 0 0 180px; }
 .seo-filters > .react-form-field:last-child { flex: 1 1 260px; min-width: 0; }
 @media (max-width: 600px) { .seo-filters > .react-form-field { flex: 1 1 100%; } }
+
+/* Panels inside the platform editors and Settings → SEO. */
+.seo-panel { display: grid; gap: 16px; }
+.seo-panel-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--text-secondary, #4d5156); }
+.seo-subheading { margin: 8px 0 0; font-size: .95rem; font-weight: 600; }
+.seo-subheading:first-child { margin-top: 0; }
+.seo-settings-tab { display: grid; gap: 1.25rem; }
+.seo-settings-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.seo-settings-fieldset > * + * { margin-top: 1.25rem; }

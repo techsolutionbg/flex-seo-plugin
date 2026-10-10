@@ -110,7 +110,11 @@ final class SeoResolver
         $default = (string) ($commerce['title'] ?? '');
         $product = is_array($commerce['product'] ?? null) ? $commerce['product'] : null;
         $category = is_array($commerce['category'] ?? null) ? $commerce['category'] : null;
-        $meta ??= $product !== null ? $this->store->get('product', (int) ($product['id'] ?? 0)) : array_fill_keys(array_keys(SeoStore::FIELDS), '') + ['og_image_media_id' => null];
+        $meta ??= match (true) {
+            $product !== null => $this->store->get('product', (int) ($product['id'] ?? 0)),
+            $category !== null && $type === 'category' => $this->store->get('category', (int) ($category['id'] ?? 0)),
+            default => array_fill_keys(array_keys(SeoStore::FIELDS), '') + ['og_image_media_id' => null],
+        };
         $robots = null;
         if (in_array($type, self::PRIVATE_TYPES, true) || $status >= 400) {
             $robots = in_array($type, ['checkout', 'order'], true) ? 'noindex, nofollow' : 'noindex, follow';

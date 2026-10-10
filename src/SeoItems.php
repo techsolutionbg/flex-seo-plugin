@@ -91,8 +91,34 @@ final class SeoItems
         ], $request, $meta);
     }
 
+    /** @return list<array<string, mixed>> Categories that are not in the trash, including inactive ones. */
+    public function categoryRecords(): array
+    {
+        $db = $this->site->connection();
+        if (!$db->getSchemaBuilder()->hasTable('flex_commerce_categories')) {
+            return [];
+        }
+
+        return $db->table('flex_commerce_categories')->whereNull('deleted_at')->orderBy('name')
+            ->get(['id', 'name', 'slug', 'description', 'status', 'updated_at'])
+            ->map(static fn(object $row): array => [
+                'id' => (int) $row->id, 'name' => (string) $row->name, 'slug' => (string) $row->slug,
+                'description' => (string) $row->description, 'status' => (string) $row->status, 'updated_at' => $row->updated_at,
+            ])->all();
+    }
+
+    /** @param array<string, mixed> $category @param array<string, mixed>|null $meta @return array<string, mixed> */
+    public function resolveCategory(array $category, ?array $meta = null): array
+    {
+        return $this->resolver->commerce([
+            'type' => 'category',
+            'path' => '/catalog/category/' . rawurlencode((string) $category['slug']),
+            'category' => $category,
+        ], null, $meta);
+    }
+
     /**
-     * Every page and product with its resolved values and analysis.
+     * Every page, product and category with its resolved values and analysis.
      * @return list<array<string, mixed>>
      */
     public function overview(): array
@@ -104,6 +130,9 @@ final class SeoItems
         foreach ($this->products() as $product) {
             $resolved[] = ['source' => $product, 'resolved' => $this->resolveProduct($product)];
         }
+        foreach ($this->categoryRecords() as $category) {
+            $resolved[] = ['source' => $category, 'resolved' => $this->resolveCategory($category)];
+        }
         $counts = $this->counts(array_column($resolved, 'resolved'));
         $rows = [];
         foreach ($resolved as $entry) {
@@ -114,28 +143,24 @@ final class SeoItems
     }
 
     /**
-     * @param array<string, mixed>|null $draft Unsaved values for a live preview.
+     * @param int|null $id Null for a record that is not saved yet; it is previewed from $source only.
+     * @param array<string, mixed>|null $draft Unsaved SEO values for a live preview.
+     * @param array<string, mixed> $source Unsaved values of the page, product or category being edited.
      * @return array<string, mixed>|null
      */
-    public function detail(string $type, int $id, ?array $draft = null): ?array
+    public function detail(string $type, ?int $id, ?array $draft = null, array $source = []): ?array
     {
-        $source = null;
-        if ($type === 'page') {
-            $page = (new PageRepository())->find($id);
-            $source = $page?->toPublicArray();
-        } elseif ($type === 'product') {
-            foreach ($this->products() as $product) {
-                if ($product['id'] === $id) {
-                    $source = $product;
-                    break;
-                }
-            }
-        }
-        if ($source === null) {
+        $record = $id === null ? $this->blank($type) : $this->find($type, $id);
+        if ($record === null) {
             return null;
         }
-        $meta = $draft === null ? null : $this->draftMeta($type, $id, $draft);
-        $resolved = $type === 'page' ? $this->resolver->page($source, null, $meta) : $this->resolveProduct($source, $meta);
+        $record = $this->withSource($type, $record, $source);
+        $meta = $draft === null ? null : $this->draftMeta($type, $id ?? 0, $draft);
+        $resolved = match ($type) {
+            'page' => $this->resolver->page($record, null, $meta),
+            'product' => $this->resolveProduct($record, $meta),
+            default => $this->resolveCategory($record, $meta),
+        };
         $others = [];
         foreach ($this->overview() as $row) {
             if ($row['type'] !== $type || $row['id'] !== $id) {
@@ -144,7 +169,84 @@ final class SeoItems
         }
         $counts = $this->counts([...$others, $resolved]);
 
-        return $this->row($source, $resolved, $counts) + ['meta' => $resolved['meta']];
+        return $this->row($record, $resolved, $counts) + ['meta' => $resolved['meta']];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function find(string $type, int $id): ?array
+    {
+        if ($type === 'page') {
+            return (new PageRepository())->find($id)?->toPublicArray();
+        }
+        foreach ($type === 'product' ? $this->products() : $this->categoryRecords() as $record) {
+            if ($record['id'] === $id) {
+                return $record;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array<string, mixed> */
+    private function blank(string $type): array
+    {
+        return match ($type) {
+            'page' => ['id' => 0, 'parent_id' => null, 'featured_media_id' => null, 'title' => '', 'slug' => '', 'content' => '', 'status' => 'draft', 'settings' => []],
+            'product' => ['id' => 0, 'name' => '', 'slug' => '', 'sku' => null, 'status' => 'draft', 'description' => '', 'excerpt' => '', 'price_minor' => 0, 'currency' => 'EUR', 'available' => false, 'images' => [], 'categories' => [], 'updated_at' => null],
+            default => ['id' => 0, 'name' => '', 'slug' => '', 'description' => '', 'status' => 'draft', 'updated_at' => null],
+        };
+    }
+
+    /**
+     * Applies the editor's unsaved values, so previews and checks follow what the user is typing.
+     * @param array<string, mixed> $record @param array<string, mixed> $source @return array<string, mixed>
+     */
+    private function withSource(string $type, array $record, array $source): array
+    {
+        $text = static fn(mixed $value, int $length): ?string => is_string($value) ? mb_substr($value, 0, $length) : null;
+        if ($type === 'page') {
+            foreach (['title' => 190, 'slug' => 190, 'content' => 200000, 'status' => 20] as $key => $length) {
+                $value = $text($source[$key] ?? null, $length);
+                if ($value !== null) {
+                    $record[$key] = $value;
+                }
+            }
+            if (array_key_exists('featured_media_id', $source)) {
+                $media = filter_var($source['featured_media_id'], FILTER_VALIDATE_INT);
+                $record['featured_media_id'] = is_int($media) && $media > 0 ? $media : null;
+            }
+
+            return $record;
+        }
+        foreach (['name' => 190, 'slug' => 190, 'description' => 200000, 'sku' => 100, 'status' => 16] as $key => $length) {
+            $value = $text($source[$key] ?? null, $length);
+            if ($value !== null) {
+                $record[$key] = $value;
+            }
+        }
+        if ($type === 'product') {
+            $record['excerpt'] = SeoResolver::text((string) $record['description']);
+            $price = static fn(mixed $value): ?int => is_numeric($value) ? (int) round((float) $value * 100) : null;
+            $regular = $price($source['price'] ?? null);
+            $sale = $price($source['sale_price'] ?? null);
+            if ($regular !== null) {
+                $record['price_minor'] = $sale !== null && $sale > 0 && $sale < $regular ? $sale : $regular;
+            }
+            if (is_string($source['currency'] ?? null) && preg_match('/^[A-Z]{3}$/', $source['currency']) === 1) {
+                $record['currency'] = $source['currency'];
+            }
+            if (is_numeric($source['stock'] ?? null)) {
+                $record['available'] = (int) $source['stock'] > 0;
+            }
+            if (is_array($source['images'] ?? null)) {
+                $record['images'] = array_values(array_filter(array_map(
+                    fn(mixed $media): ?array => $this->site->image(is_numeric($media) ? (int) $media : null),
+                    $source['images'],
+                )));
+            }
+        }
+
+        return $record;
     }
 
     /**

@@ -8,7 +8,7 @@ use Illuminate\Database\{Connection, Eloquent\Model, Schema\Blueprint};
 
 final class SeoStore
 {
-    public const TYPES = ['page', 'product'];
+    public const TYPES = ['page', 'product', 'category'];
     /** Text fields and their maximum length in characters. */
     public const FIELDS = [
         'seo_title' => 190,

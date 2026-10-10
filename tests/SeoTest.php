@@ -345,7 +345,7 @@ final class SeoTest extends TestCase
     {
         $items = $this->items();
         $overview = $items->overview();
-        self::assertCount(8, $overview, 'Six pages and two products, including drafts.');
+        self::assertCount(9, $overview, 'Six pages, two products and one category, including drafts.');
         $detail = $items->detail('product', 1);
         self::assertSame('Чаша „Троян“ | Магазин Флекс', $detail['preview']['title']);
         $preview = $items->detail('page', 2, ['seo_title' => 'Ново заглавие', 'canonical_url' => '//bad']);
@@ -357,9 +357,50 @@ final class SeoTest extends TestCase
         $controller = new \ReflectionClass(AdminController::class);
         $listing = $controller->newInstanceWithoutConstructor()->listing($overview, ['type' => 'product', 'q' => 'троян']);
         self::assertSame(1, $listing['count']);
-        self::assertSame(8, array_sum($listing['totals']));
+        self::assertSame(9, array_sum($listing['totals']));
         $this->expectException(\InvalidArgumentException::class);
         $controller->newInstanceWithoutConstructor()->listing($overview, ['status' => 'bad']);
+    }
+
+    public function testEditorPreviewUsesUnsavedValuesForExistingAndNewRecords(): void
+    {
+        $items = $this->items();
+        $page = $items->detail('page', 2, [], ['title' => 'Керамика от Троян', 'slug' => 'keramika', 'content' => '<p>Ръчно изработена керамика за дома и подаръци.</p>']);
+        self::assertSame('Керамика от Троян | Магазин Флекс', $page['preview']['title']);
+        self::assertSame($this->base . '/keramika', $page['preview']['url'], 'An unsaved slug is previewed.');
+        self::assertSame('Ръчно изработена керамика за дома и подаръци.', $page['preview']['description']);
+
+        $new = $items->detail('page', null, ['seo_title' => 'Нова страница за SEO'], ['title' => 'Нова', 'slug' => 'nova']);
+        self::assertSame('Нова страница за SEO', $new['preview']['title']);
+        self::assertSame($this->base . '/nova', $new['preview']['url']);
+
+        $product = $items->detail('product', null, [], ['name' => 'Нова чаша', 'slug' => 'nova-chasha', 'description' => '<p>Чаша.</p>', 'price' => '12.50', 'sale_price' => '', 'currency' => 'EUR', 'stock' => '0', 'images' => [1]]);
+        self::assertSame('Нова чаша | Магазин Флекс', $product['preview']['title']);
+        self::assertSame($this->base . '/media-files/1/original', $product['preview']['image']);
+        self::assertSame($this->base . '/product/nova-chasha', $product['preview']['url']);
+        $resolved = $this->items()->resolveProduct(['id' => 0, 'name' => 'Нова чаша', 'slug' => 'x', 'price_minor' => 1250, 'currency' => 'EUR', 'available' => false, 'images' => []]);
+        self::assertSame('12.50', $resolved['json_ld'][0]['offers']['price']);
+    }
+
+    public function testCategoriesHaveTheirOwnSeoValues(): void
+    {
+        $this->store->save('category', 1, ['seo_title' => 'Чаши за кафе и чай', 'meta_description' => 'Ръчно изработени чаши.']);
+        $category = $this->items()->detail('category', 1);
+        self::assertSame('category', $category['type']);
+        self::assertSame('Чаши за кафе и чай', $category['preview']['title']);
+        $public = $this->resolver()->commerce(['type' => 'category', 'path' => '/catalog/category/cups', 'category' => ['id' => 1, 'name' => 'Чаши', 'slug' => 'cups']]);
+        self::assertSame('Чаши за кафе и чай', $public['title']);
+        self::assertSame('Ръчно изработени чаши.', $public['description']);
+        self::assertNull($this->items()->detail('category', 99));
+    }
+
+    public function testListingCanReturnEveryRowForTheColumn(): void
+    {
+        $rows = array_fill(0, 30, ['type' => 'page', 'name' => 'x', 'path' => '/x', 'preview' => ['title' => 'x'], 'analysis' => ['status' => 'good']]);
+        $controller = (new \ReflectionClass(AdminController::class))->newInstanceWithoutConstructor();
+        self::assertCount(25, $controller->listing($rows, [])['records']);
+        self::assertCount(30, $controller->listing($rows, ['per_page' => '1000'])['records']);
+        self::assertCount(30, $controller->listing($rows, ['per_page' => '99999'])['records']);
     }
 
     public function testUninstallKeepsDataUnlessRequested(): void
