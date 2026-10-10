@@ -67,4 +67,4 @@ data/                Plugin-local data (seo.json is created at runtime)
 
 The plugin uses Flex CMS classes and services and is not a standalone PHP application. It has no automated tests yet. Public `<head>` output, sitemaps and structured data are not implemented.
 
-This repository has no separate `LICENSE` file and grants no licence to use, modify or distribute the code. Public access to the source code does not constitute such a licence.
+This plugin is licensed under the GNU General Public License, version 2 or (at your option) any later version (`GPL-2.0-or-later`). The full text of version 2 is in [`LICENSE`](LICENSE).
