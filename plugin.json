@@ -1,18 +1,33 @@
 {
   "id": "flex/seo",
   "name": "Flex SEO",
-  "version": "0.1.3",
-  "description": "SEO полета и метаданни за страниците на Flex CMS.",
+  "version": "0.2.0",
+  "description": "SEO заглавия, meta описания, Open Graph, структурирани данни, sitemap.xml, robots.txt и проверка на съдържанието.",
+  "minimum_platform_version": "0.1.59",
   "entrypoint": "Flex\\Seo\\SeoPlugin",
   "autoload": {
     "Flex\\Seo\\": "src/"
   },
   "permissions": [
     "admin.ui",
-    "events.listen"
+    "events.listen",
+    "routes.admin",
+    "routes.public",
+    "frontend.assets"
   ],
+  "frontend": {
+    "scripts": [
+      "assets/admin.js"
+    ],
+    "styles": [
+      "assets/admin.css"
+    ]
+  },
   "metadata": {
-    "storage": "plugin-local-json",
-    "status": "development"
+    "status": "stable",
+    "storage": "database",
+    "optional": [
+      "flex/commerce"
+    ]
   }
 }

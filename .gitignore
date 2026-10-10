@@ -12,3 +12,4 @@ node_modules/
 .php-cs-fixer.cache
 *.log
 /data/*.json
+/data/*.json.migrated

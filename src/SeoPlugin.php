@@ -4,90 +4,108 @@ declare(strict_types=1);
 
 namespace Flex\Seo;
 
-use Flex\Extension\V1\BootablePluginInterface;
-use Flex\Extension\V1\EventNames;
-use Flex\Extension\V1\ExtensionEventInterface;
-use Flex\Extension\V1\PageEvent;
-use Flex\Extension\V1\PluginContext;
-use Flex\Extension\V1\PluginInterface;
+use Flex\Extension\V1\{BootablePluginInterface, EventNames, ExtensionEventInterface, PageEvent, PluginContext, PluginInterface, UninstallablePluginInterface, UpdatablePluginInterface};
 
-final class SeoPlugin implements PluginInterface, BootablePluginInterface
+final class SeoPlugin implements PluginInterface, BootablePluginInterface, UpdatablePluginInterface, UninstallablePluginInterface
 {
-    public function install(PluginContext $context): void {}
+    private ?SeoResolver $resolver = null;
+    private string $signature = 'Flex SEO';
 
-    public function activate(PluginContext $context): void {}
+    public function install(PluginContext $context): void
+    {
+        $store = new SeoStore();
+        $store->install();
+        $store->migrateJson(rtrim($context->path, '/\\') . '/data/seo.json');
+    }
+
+    public function activate(PluginContext $context): void
+    {
+        $this->install($context);
+    }
+
+    public function update(PluginContext $context, string $fromVersion): void
+    {
+        $this->install($context);
+    }
 
     public function deactivate(PluginContext $context): void {}
 
+    public function uninstall(PluginContext $context): void
+    {
+        (new SeoStore())->uninstall();
+    }
+
     public function boot(PluginContext $context): void
     {
-        $context->pageFields?->text('seo_title', 'SEO заглавие', '', 'Заглавието, което ще се използва в търсачките.', 190);
-        $context->pageFields?->textarea('meta_description', 'Meta описание', '', 'Кратко описание на страницата за търсачките.', 320);
-        $context->pageFields?->text('focus_keyword', 'Основна ключова дума', '', 'Основната ключова дума или фраза за оптимизация на страницата.', 190);
-        $context->pageFields?->text('og_title', 'Open Graph заглавие', '', 'Заглавие за споделяне на страницата в социални мрежи.', 190);
-        $context->pageFields?->text('canonical_url', 'Canonical URL', '', 'Каноничният адрес на страницата.', 500);
-        $context->pageSettings?->checkbox('no_index', 'Не индексирай страницата', false, 'Забранява показването на страницата в резултатите от търсачките.');
-
-        $context->pageFields?->values(fn (int $pageId): array => $this->read($context, $pageId));
-        $context->pageSettings?->values(fn (int $pageId): array => $this->read($context, $pageId));
-        $context->api->listen(EventNames::PAGE_CREATED, function (ExtensionEventInterface $event) use ($context): void {
-            $this->saveEvent($context, $event);
+        $name = is_string($context->manifest['name'] ?? null) ? $context->manifest['name'] : 'Flex SEO';
+        $this->signature = trim($name . ' ' . $context->version);
+        $context->pageFields?->text('seo_title', 'SEO заглавие', '', 'Заглавие в резултатите от търсене. Празно поле използва шаблона от настройките на SEO.', 190);
+        $context->pageFields?->textarea('meta_description', 'Meta описание', '', 'Описание в резултатите от търсене, препоръчително 70–160 символа. Празно поле използва началото на съдържанието.', 320);
+        $context->pageFields?->text('focus_keyword', 'Основна ключова дума', '', 'Използва се само за проверките в раздел SEO.', 190);
+        $context->pageFields?->text('og_title', 'Заглавие за социални мрежи', '', 'Open Graph заглавие при споделяне. Празно поле използва SEO заглавието.', 190);
+        $context->pageFields?->textarea('og_description', 'Описание за социални мрежи', '', 'Open Graph описание при споделяне. Празно поле използва meta описанието.', 320);
+        $context->pageFields?->text('canonical_url', 'Canonical URL', '', 'Само ако съдържанието е копие на друга страница. Път като /about или пълен адрес.', 500);
+        $context->pageFields?->values(static function (int $pageId): array {
+            try {
+                return array_intersect_key((new SeoStore())->get('page', $pageId), SeoStore::FIELDS);
+            } catch (\Throwable) {
+                return [];
+            }
         });
-        $context->api->listen(EventNames::PAGE_UPDATED, function (ExtensionEventInterface $event) use ($context): void {
-            $this->saveEvent($context, $event);
+        $save = static function (ExtensionEventInterface $event) use ($context): void {
+            if (!$event instanceof PageEvent || !is_int($event->page['id'] ?? null)) {
+                return;
+            }
+            $values = array_intersect_key($event->fields[$context->id] ?? [], SeoStore::FIELDS);
+            if ($values !== []) {
+                (new SeoStore())->save('page', $event->page['id'], $values, true);
+            }
+        };
+        $context->api->listen(EventNames::PAGE_CREATED, $save);
+        $context->api->listen(EventNames::PAGE_UPDATED, $save);
+        $context->api->listen(EventNames::PAGE_DELETED, static function (ExtensionEventInterface $event): void {
+            if ($event instanceof PageEvent && is_int($event->page['id'] ?? null)) {
+                (new SeoStore())->delete('page', $event->page['id']);
+            }
         });
-        $context->api->listen(EventNames::PAGE_DELETED, function (ExtensionEventInterface $event) use ($context): void {
-            $this->deleteEvent($context, $event);
-        });
+
+        $context->api->addFilter('public.head', function (mixed $html, array $filterContext = []): mixed {
+            $resolved = $this->resolve($filterContext);
+
+            return $resolved === null || !is_string($html) ? $html : $html . $this->resolver()->head($resolved);
+        }, 20);
+        $context->api->addFilter('public.title', function (mixed $title, array $filterContext = []): mixed {
+            $resolved = $this->resolve($filterContext);
+
+            return $resolved === null ? $title : $resolved['title'];
+        }, 20);
+
+        $context->routes?->publicRoute('GET', '/sitemap.xml', SitemapController::class, 'sitemap');
+        $context->routes?->publicRoute('GET', '/robots.txt', RobotsController::class, 'robots');
+        $context->routes?->admin('GET', '/items', AdminController::class, 'items');
+        foreach (['page', 'product'] as $type) {
+            $context->routes?->admin(['GET', 'PUT'], '/items/' . $type . '/{id:number}', AdminController::class, 'item-' . $type);
+            $context->routes?->admin('POST', '/items/' . $type . '/{id:number}/preview', AdminController::class, 'preview-' . $type);
+        }
+        $context->routes?->admin(['GET', 'PUT'], '/settings', AdminController::class, 'settings');
+        $context->admin?->page('seo', 'SEO', 'assets/admin.js', false, ['group' => 'content', 'icon' => 'file-text', 'order' => 40]);
     }
 
-    private function saveEvent(PluginContext $context, ExtensionEventInterface $event): void
+    /** @param array<string, mixed> $context @return array<string, mixed>|null */
+    private function resolve(array $context): ?array
     {
-        if (!$event instanceof PageEvent || !isset($event->page['id']) || !is_int($event->page['id'])) return;
-        $all = $this->all($context);
-        $key = (string) $event->page['id'];
-        $all[$key] = [
-            ...($all[$key] ?? []),
-            ...($event->fields[$context->id] ?? []),
-        ];
-        $this->write($context, $all);
+        try {
+            return $this->resolver()->resolve($context);
+        } catch (\Throwable $error) {
+            // SEO output must never break a public page.
+            error_log('Flex SEO: ' . $error->getMessage());
+
+            return null;
+        }
     }
 
-    private function deleteEvent(PluginContext $context, ExtensionEventInterface $event): void
+    private function resolver(): SeoResolver
     {
-        if (!$event instanceof PageEvent || !isset($event->page['id'])) return;
-        $all = $this->all($context);
-        unset($all[(string) $event->page['id']]);
-        $this->write($context, $all);
-    }
-
-    /** @return array<string, array<string, string|bool>> */
-    private function all(PluginContext $context): array
-    {
-        $path = $this->dataPath($context);
-        if (!is_file($path)) return [];
-        $decoded = json_decode((string) file_get_contents($path), true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /** @return array<string, string|bool> */
-    private function read(PluginContext $context, int $pageId): array
-    {
-        $all = $this->all($context);
-        $values = $all[(string) $pageId] ?? [];
-        return is_array($values) ? $values : [];
-    }
-
-    /** @param array<string, array<string, string|bool>> $values */
-    private function write(PluginContext $context, array $values): void
-    {
-        $path = $this->dataPath($context);
-        if (!is_dir(dirname($path))) mkdir(dirname($path), 0775, true);
-        file_put_contents($path, json_encode($values, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL, LOCK_EX);
-    }
-
-    private function dataPath(PluginContext $context): string
-    {
-        return rtrim($context->path, '/') . '/data/seo.json';
+        return $this->resolver ??= new SeoResolver(new SeoStore(), new SeoSite(), $this->signature);
     }
 }
