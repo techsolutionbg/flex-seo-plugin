@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createColumn, createPanel} from '../assets/panels.js';
+import {createColumn, createPanel, createRowAction} from '../assets/panels.js';
 import {editorPath, lengthState, LIMITS, sourceFrom} from '../assets/components.js';
 
 const componentNames = ['DataTable', 'TableActionsMenu', 'DropdownMenu', 'DropdownOption', 'DropdownChevron', 'CheckboxField', 'Input', 'Textarea', 'LoadingButton', 'CollapsibleSection', 'MediaPicker'];
@@ -14,6 +14,7 @@ function harness(initialStates, requests = []) {
     useState: (initial) => [queue.length ? queue.shift() : (typeof initial === 'function' ? initial() : initial), () => {}],
     useEffect: (effect) => effects.push(effect),
     useRef: (initial) => ({current: initial}),
+    useId: () => ':r1:',
     createElement(type, props, ...children) {
       assert.ok(type, 'Component must exist in the platform host API');
       if (typeof type === 'function') return type({...props, children});
@@ -57,6 +58,11 @@ test('the editor panel shows the fields, the search preview and the checks', () 
   const Panel = createPanel(host, {location: 'page.editor'});
   Panel({context: {type: 'page', id: 2, values: {title: 'За нас'}}, registerSave: () => () => {}, changed: () => {}});
   assert.equal(rendered.filter((node) => node.type === 'Input' || node.type === 'Textarea').length, 6);
+  // The groups are the platform's collapsible sections, nested in the panel section.
+  const groups = rendered.filter((node) => node.type === 'CollapsibleSection' && node.props?.className === 'seo-group');
+  assert.deepEqual(groups.map((node) => node.props.title), ['Резултати в търсачките', 'Ключова дума', 'Споделяне в социални мрежи', 'Разширени настройки', 'Преглед в търсачките', 'Преглед при споделяне', 'Проверки']);
+  assert.deepEqual(groups.map((node) => node.props.storageKey), ['seo-editor-search', 'seo-editor-keyword', 'seo-editor-social', 'seo-editor-advanced', 'seo-editor-preview-search', 'seo-editor-preview-social', 'seo-editor-checks'], 'Each group remembers whether it is open.');
+  for (const group of groups) assert.equal(typeof group.props.icon, 'function', 'Each group has an icon.');
   assert.ok(rendered.some((node) => node.type === 'span' && node.props?.className === 'seo-serp-url'));
   assert.ok(rendered.some((node) => node.type === 'li' && node.props?.className === 'seo-check seo-check-error'));
 });
@@ -95,4 +101,33 @@ test('the pages list column loads every rating once and sorts problems first', a
   assert.equal(column.render({id: 5}, ratings), '—');
   const cell = column.render({id: 2}, ratings);
   assert.equal(cell.props.title, 'Кратко заглавие.');
+});
+
+test('fields show the generated text as real text until the user writes their own', () => {
+  const values = {seo_title: '', meta_description: 'Мое описание', focus_keyword: '', og_title: '', og_description: '', canonical_url: '', og_image_media_id: null};
+  const custom = {meta_description: true};
+  const {host, rendered} = harness([values, null, item, '', custom]);
+  createPanel(host, {location: 'page.editor'})({context: {type: 'page', id: 2, values: {}}, registerSave: () => () => {}, changed: () => {}});
+  const field = (label) => rendered.find((node) => node.type === 'label' && node.children[0] === label);
+  const control = (label) => field(label).children[1];
+  assert.equal(control('SEO заглавие').value, 'За нас | Магазин', 'The generated title is real text, not a placeholder.');
+  assert.equal(control('SEO заглавие').placeholder, undefined);
+  assert.equal(control('Meta описание').value, 'Мое описание', 'Own text is shown as written.');
+  assert.equal(control('Canonical URL').value, 'https://shop.example/about-us');
+  assert.ok(field('SEO заглавие').props.className.includes('is-auto'));
+  assert.ok(field('Meta описание').props.className.includes('is-custom'));
+  assert.ok(rendered.some((node) => node.type === 'button' && node.props?.className === 'seo-auto-reset'), 'Own text can be reset to the generated text.');
+});
+
+test('the pages list row action opens the page editor', () => {
+  const action = createRowAction();
+  const opened = [];
+  assert.equal(action.label, 'Редактирай SEO');
+  action.onSelect({id: 7}, {navigate: (path) => opened.push(path)});
+  assert.deepEqual(opened, ['/pages/7/edit']);
+});
+
+test('the settings tab is chosen by the screen.tab slot', () => {
+  const {host} = harness([]);
+  assert.notEqual(createPanel(host, {point: 'settings', slot: 'screen.tab'}), createPanel(host, {point: 'page.editor', slot: 'screen.section'}));
 });

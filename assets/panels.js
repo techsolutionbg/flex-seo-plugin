@@ -1,9 +1,20 @@
 // Flex SEO inside the platform screens: the page, product and category editors, Settings → SEO and the pages list.
-import {BASE, createUi} from './components.js';
+import {BASE, createUi, editorPath} from './components.js';
 
 export function createPanel(host, info) {
   const ui = createUi(host);
-  return info?.location === 'settings.tab' ? ui.SettingsTab : ui.EditorPanel;
+  const tab = info?.slot === 'screen.tab' || info?.location === 'settings.tab';
+  return tab ? ui.SettingsTab : ui.EditorPanel;
+}
+
+/** "Редактирай SEO" in the actions menu of every page in the pages list. */
+export function createRowAction() {
+  return {
+    label: 'Редактирай SEO',
+    onSelect(page, helpers) {
+      helpers?.navigate?.(editorPath({type: 'page', id: page.id}));
+    },
+  };
 }
 
 /** The SEO column in the pages list: one request for the ratings of every page. */

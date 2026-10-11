@@ -1,9 +1,9 @@
 {
   "id": "flex/seo",
   "name": "Flex SEO",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "SEO заглавия, meta описания, Open Graph, структурирани данни, sitemap.xml, robots.txt и проверка на съдържанието.",
-  "minimum_platform_version": "0.1.59",
+  "minimum_platform_version": "0.1.60",
   "entrypoint": "Flex\\Seo\\SeoPlugin",
   "autoload": {
     "Flex\\Seo\\": "src/"

@@ -376,7 +376,16 @@ final class SeoTest extends TestCase
 
         $product = $items->detail('product', null, [], ['name' => 'Нова чаша', 'slug' => 'nova-chasha', 'description' => '<p>Чаша.</p>', 'price' => '12.50', 'sale_price' => '', 'currency' => 'EUR', 'stock' => '0', 'images' => [1]]);
         self::assertSame('Нова чаша | Магазин Флекс', $product['preview']['title']);
-        self::assertSame($this->base . '/media-files/1/original', $product['preview']['image']);
+        self::assertSame('/media-files/1/original', $product['preview']['image'], 'The admin preview loads the image from the current site.');
+        self::assertSame($this->base . '/media-files/1/original', $product['preview']['image_url']);
+
+        // Regression: the site address (APP_URL) may differ from the admin address, so the selected image must not use it.
+        $this->store->saveSettings(['site_url' => 'https://unreachable.example']);
+        $page = $this->items()->detail('page', 2, ['og_image_media_id' => 1]);
+        self::assertSame('/media-files/1/original', $page['preview']['image']);
+        self::assertSame('https://unreachable.example/media-files/1/original', $page['preview']['image_url']);
+        $head = $this->resolver()->head($this->resolver()->page($this->page(2), null, $this->store->get('page', 2)));
+        self::assertStringContainsString('<meta property="og:image" content="https://unreachable.example/media-files/1/original" data-flex-seo>', $head, 'og:image stays absolute.');
         self::assertSame($this->base . '/product/nova-chasha', $product['preview']['url']);
         $resolved = $this->items()->resolveProduct(['id' => 0, 'name' => 'Нова чаша', 'slug' => 'x', 'price_minor' => 1250, 'currency' => 'EUR', 'available' => false, 'images' => []]);
         self::assertSame('12.50', $resolved['json_ld'][0]['offers']['price']);

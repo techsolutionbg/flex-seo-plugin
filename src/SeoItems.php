@@ -320,7 +320,9 @@ final class SeoItems
                 'url' => $resolved['canonical'] !== '' ? $resolved['canonical'] : $base . $resolved['path'],
                 'og_title' => $resolved['og_title'],
                 'og_description' => $resolved['og_description'],
-                'image' => $resolved['image']['url'] ?? null,
+                // The admin preview loads the image from the current site; og:image itself stays absolute (image_url).
+                'image' => $resolved['image']['path'] ?? null,
+                'image_url' => $resolved['image']['url'] ?? null,
                 'robots' => $resolved['robots'],
                 'site_name' => $this->site->name(),
             ],

@@ -67,11 +67,13 @@ final class SeoPlugin implements PluginInterface, BootablePluginInterface, Updat
         $context->routes?->admin(['GET', 'PUT'], '/settings', AdminController::class, 'settings');
 
         // SEO lives inside the platform screens: editors, the pages list and Settings → SEO.
-        $context->admin?->panel('page.editor', 'meta', 'SEO', 'assets/panels.js', ['icon' => 'file-text', 'order' => 10]);
-        $context->admin?->panel('pages.list.column', 'score', 'SEO', 'assets/panels.js');
-        $context->admin?->panel('settings.tab', 'settings', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
-        $context->admin?->panel('commerce.product.editor', 'product', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
-        $context->admin?->panel('commerce.category.editor', 'category', 'SEO', 'assets/panels.js', ['icon' => 'file-text']);
+        $seo = ['label' => 'SEO', 'icon' => 'file-text'];
+        $context->admin?->extend('page.editor', 'screen.section', 'meta', 'assets/panels.js', $seo + ['order' => 10]);
+        $context->admin?->extend('pages.list', 'table.column', 'score', 'assets/panels.js', $seo);
+        $context->admin?->extend('pages.list', 'table.row-action', 'edit', 'assets/panels.js', $seo);
+        $context->admin?->extend('settings', 'screen.tab', 'settings', 'assets/panels.js', $seo);
+        $context->admin?->extend('commerce.product.editor', 'screen.section', 'product', 'assets/panels.js', $seo);
+        $context->admin?->extend('commerce.category.editor', 'screen.section', 'category', 'assets/panels.js', $seo);
         // Flex Commerce removes products and categories permanently from the trash.
         $context->api->addAction('commerce.catalog.deleted', static function (array $deleted): void {
             if (in_array($deleted['kind'] ?? null, ['product', 'category'], true) && is_int($deleted['id'] ?? null)) {

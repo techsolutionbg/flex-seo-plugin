@@ -2,13 +2,13 @@
 
 Search engine optimisation for Flex CMS: titles, meta descriptions, canonical URLs, Open Graph and X (Twitter) cards, Schema.org structured data, `sitemap.xml`, `robots.txt` and content checks for pages and Flex Commerce products.
 
-Version: **0.3.0** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.59**.
+Version: **0.4.0** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.60**.
 
 GitHub repository: `techsolutionbg/flex-seo-plugin`.
 
 ## Requirements and installation
 
-Requires an installed Flex CMS 0.1.59 or later with PHP 8.3+ and its database. Version 0.1.59 adds the `public.title` filter used for the document title. **Flex Commerce 0.2.5+** is optional: when it is active, product, category and catalogue pages get their own tags and appear in the sitemap. A theme must print `head_tags` in `<head>` and use `document_title` for `<title>`; Flex Starter 1.0.7 does both.
+Requires an installed Flex CMS 0.1.60 or later with PHP 8.3+ and its database. Version 0.1.59 adds the `public.title` filter used for the document title, and 0.1.60 the admin extension points. **Flex Commerce 0.2.5+** is optional: when it is active, product, category and catalogue pages get their own tags and appear in the sitemap. A theme must print `head_tags` in `<head>` and use `document_title` for `<title>`; Flex Starter 1.0.7 does both.
 
 Place the package in `plugins/flex/seo/`, with `plugin.json` directly inside that folder. From the Flex CMS root:
 
@@ -62,7 +62,7 @@ Through the `public.head` and `public.title` filters the plugin adds:
   - `BreadcrumbList` on other pages, categories and products
   - `Product` with `Offer` (price, currency, availability, SKU, images) on product pages
 
-The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.3.0 -->` and `<!-- / Flex SEO 0.3.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
+The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.4.0 -->` and `<!-- / Flex SEO 0.4.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
 
 Absolute URLs use the **Site address** setting, then `APP_URL`, then the address of the request.
 
@@ -79,10 +79,10 @@ Each type can be switched off in the settings. `lastmod` comes from the last upd
 
 ## Administration
 
-Flex SEO has no separate page. It uses the platform's admin panels (Flex CMS 0.1.59+), so administrators work where they edit content:
+Flex SEO has no separate page. It registers its screens with the platform extension points (`$context->admin->extend()`, Flex CMS 0.1.60+), so administrators work where they edit content:
 
-- **Page, product and category editors:** an **SEO** section with the fields, a rating summary, a search result preview, a social card preview and the list of checks. The previews and checks use the unsaved title, address, content, price and images while the user types, also for a record that is not saved yet. The SEO values are saved with the editor's own **Save** button, right after the record; a record without SEO changes writes nothing.
-- **Pages list:** an **SEO** column with the rating; the tooltip lists the remarks, and the column can be sorted.
+- **Page, product and category editors:** an **SEO** section with the fields, a rating summary, a search result preview, a social card preview and the list of checks. The previews and checks use the unsaved title, address, content, price and images while the user types, also for a record that is not saved yet. The SEO values are saved with the editor's own **Save** button, right after the record; a record without SEO changes writes nothing. The title, description, social and canonical fields show the generated text as real, editable text; it keeps following the template and the content until the user edits it, and **Върни автоматичния текст** switches a field back.
+- **Pages list:** an **SEO** column with the rating; the tooltip lists the remarks, and the column can be sorted. Each row's actions menu has **Редактирай SEO**, which opens the page editor.
 - **Settings → SEO:** the global settings and **Site check**, every page, product and category with its rating, filters by type and rating and a search. **Edit SEO** opens the record's editor.
 
 The checks cover:
@@ -153,7 +153,7 @@ docker compose exec -T app vendor/bin/phpunit plugins/flex/seo/tests/SeoTest.php
 node --test plugins/flex/seo/tests/panels.test.mjs
 ```
 
-The PHP tests use SQLite in memory. When this README was written, **15 PHP tests with 117 assertions** and **5 JavaScript tests** passed.
+The PHP tests use SQLite in memory. When this README was written, **15 PHP tests with 121 assertions** and **8 JavaScript tests** passed.
 
 ## Package boundaries
 

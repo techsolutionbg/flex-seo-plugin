@@ -1,4 +1,15 @@
 /* Flex SEO administration. Colours come from the admin theme tokens so light and dark modes both work. */
+/* The admin sets html[data-admin-theme="light"|"dark"]; the operating system preference is not used directly. */
+:root {
+  --seo-serp-title: #1a0dab;
+  --seo-warning: #8a5a00;
+  --seo-warning-dot: #c58a12;
+}
+:root[data-admin-theme="dark"] {
+  --seo-serp-title: #8ab4f8;
+  --seo-warning: #f2c46d;
+  --seo-warning-dot: #e0a93a;
+}
 .seo-edit { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 24px; align-items: start; }
 
 
@@ -6,15 +17,12 @@
 .seo-side { display: grid; gap: 16px; position: sticky; top: 16px; }
 @media (max-width: 960px) { .seo-edit { grid-template-columns: minmax(0, 1fr); } .seo-side { position: static; } }
 
-.seo-preview { padding: 16px; border: 1px solid var(--border, #d6ddd8); border-radius: 10px; background: var(--surface, #fff); min-width: 0; }
-.seo-preview h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 1rem; }
 
 .seo-serp { display: grid; gap: 2px; font-family: Arial, sans-serif; overflow-wrap: anywhere; }
 .seo-serp-site { color: var(--text-primary, #202124); font-size: 14px; }
 .seo-serp-url { color: var(--text-secondary, #4d5156); font-size: 12px; }
-.seo-serp-title { color: #1a0dab; font-size: 20px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.seo-serp-title { color: var(--seo-serp-title); font-size: 20px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .seo-serp-description { color: var(--text-secondary, #4d5156); font-size: 14px; line-height: 1.58; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-@media (prefers-color-scheme: dark) { .seo-serp-title { color: #8ab4f8; } }
 
 .seo-social { border: 1px solid var(--border, #d6ddd8); border-radius: 8px; overflow: hidden; }
 .seo-social img, .seo-social-empty { display: block; width: 100%; aspect-ratio: 1.91 / 1; object-fit: cover; background: var(--surface-subtle, #f1f4f2); }
@@ -27,12 +35,13 @@
 .seo-check { position: relative; padding-left: 22px; line-height: 1.45; }
 .seo-check::before { content: ""; position: absolute; left: 2px; top: .45em; width: 10px; height: 10px; border-radius: 50%; }
 .seo-check-error::before { background: var(--danger-text, #a63428); }
-.seo-check-warning::before { background: #c58a12; }
+.seo-check-warning::before { background: var(--seo-warning-dot); }
 .seo-check-info::before { background: var(--text-muted, #8a958d); }
 
 .seo-counter { display: block; font-size: .85rem; color: var(--text-muted, #6b786e); }
 .seo-counter-good { color: var(--success-text, #2d6a4f); }
-.seo-counter-short, .seo-counter-long { color: #a86d00; }
+.seo-counter-short, .seo-counter-long { color: var(--seo-warning); }
+.seo-checks-status { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-secondary, #4d5156); }
 .seo-note { margin: 10px 0 0; color: var(--danger-text, #a63428); }
 
 .seo-image-field { display: grid; gap: 8px; }
@@ -44,7 +53,7 @@
 .seo-total { padding: 8px 14px; border: 1px solid var(--border, #d6ddd8); border-radius: 999px; background: var(--surface, #fff); color: var(--text-primary, #1f2a24); cursor: pointer; font: inherit; }
 .seo-total[aria-pressed="true"] { border-color: var(--control-accent, #2d6a4f); box-shadow: inset 0 0 0 1px var(--control-accent, #2d6a4f); }
 .seo-total-good strong { color: var(--success-text, #2d6a4f); }
-.seo-total-warning strong { color: #a86d00; }
+.seo-total-warning strong { color: var(--seo-warning); }
 .seo-total-error strong { color: var(--danger-text, #a63428); }
 
 .seo-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; width: 100%; min-width: 0; }
@@ -55,8 +64,19 @@
 /* Panels inside the platform editors and Settings → SEO. */
 .seo-panel { display: grid; gap: 16px; }
 .seo-panel-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--text-secondary, #4d5156); }
-.seo-subheading { margin: 8px 0 0; font-size: .95rem; font-weight: 600; }
-.seo-subheading:first-child { margin-top: 0; }
+.seo-groups { display: grid; gap: 16px; min-width: 0; }
+.seo-group-hint { margin: 0 0 14px; font-size: .875rem; color: var(--text-secondary, #4d5156); }
+/* Nested sections inside the SEO panel: the platform component with a lighter, more compact header. */
+.seo-groups > .collapsible-section { box-shadow: none; }
+.seo-groups > .collapsible-section > .collapsible-section-header { min-height: 3.25rem; padding: .75rem 1rem; font-size: 1rem; }
+/* Only open sections: the platform removes the vertical padding of closed sections to collapse them fully. */
+.seo-groups > .collapsible-section.is-open > .collapsible-section-body > .collapsible-section-body-inner { padding: 1rem; }
+.seo-groups > .collapsible-section.is-closed > .collapsible-section-body > .collapsible-section-body-inner { padding: 0 1rem; }
 .seo-settings-tab { display: grid; gap: 1.25rem; }
 .seo-settings-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 .seo-settings-fieldset > * + * { margin-top: 1.25rem; }
+
+/* Fields with generated text: the state line says whether the text is automatic or the user's own. */
+.seo-auto-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.seo-auto-reset { padding: 0; border: 0; background: none; color: var(--control-accent, #2d6a4f); font: inherit; font-size: .85rem; text-decoration: underline; cursor: pointer; }
+.seo-auto-reset:focus-visible { outline: 2px solid var(--control-accent, #2d6a4f); outline-offset: 2px; border-radius: 2px; }

@@ -62,6 +62,25 @@ export function createUi(host) {
       hint && h('small', {className: 'react-field-hint'}, hint));
   }
 
+  /**
+   * A field that shows the generated text as real, editable text. While the user has not changed it the value is
+   * not stored and keeps following the template and the content; editing makes it the user's own text.
+   */
+  function AutoTextField({label, hint, value, auto, custom, onChange, onReset, maxLength, multiline, limits}) {
+    const Control = multiline ? C.Textarea : C.Input;
+    const shown = custom ? value : (auto ?? '');
+    return h('label', {className: 'react-form-field seo-auto-field' + (custom ? ' is-custom' : ' is-auto')}, label,
+      h(Control, {value: shown, maxLength, onChange: (e) => onChange(e.target.value)}),
+      limits && h(Counter, {value: shown, limits}),
+      h('span', {className: 'seo-auto-state'},
+        custom
+          ? h(React.Fragment, null,
+            h('small', {className: 'react-field-hint'}, 'Ваш текст.'),
+            h('button', {type: 'button', className: 'seo-auto-reset', onClick: onReset}, 'Върни автоматичния текст'))
+          : h('small', {className: 'react-field-hint'}, 'Автоматичен текст, обновява се със съдържанието. Редактирайте го, за да зададете свой.')),
+      hint && h('small', {className: 'react-field-hint'}, hint));
+  }
+
   function ImageField({label, hint, image, onChange}) {
     const [open, setOpen] = React.useState(false);
     return h('div', {className: 'react-form-field seo-image-field'}, label,
@@ -79,8 +98,7 @@ export function createUi(host) {
       const parsed = new URL(preview.url);
       url = parsed.host + parsed.pathname.replace(/\/$/, '').split('/').filter(Boolean).map((part) => ' › ' + decodeURIComponent(part)).join('');
     } catch { /* keep the raw value */ }
-    return h('section', {className: 'seo-preview', 'aria-label': 'Преглед в Google'},
-      h('h3', null, 'Преглед в търсачките'),
+    return h(Group, {id: 'preview-search', icon: icons.Search ?? icons.Eye, title: 'Преглед в търсачките'},
       h('div', {className: 'seo-serp'},
         h('span', {className: 'seo-serp-site'}, preview.site_name),
         h('span', {className: 'seo-serp-url'}, url),
@@ -92,8 +110,7 @@ export function createUi(host) {
   function SocialPreview({preview}) {
     let site = '';
     try { site = new URL(preview.url).host; } catch { /* no host */ }
-    return h('section', {className: 'seo-preview', 'aria-label': 'Преглед при споделяне'},
-      h('h3', null, 'Преглед при споделяне'),
+    return h(Group, {id: 'preview-social', icon: icons.Share2 ?? icons.Images, title: 'Преглед при споделяне'},
       h('div', {className: 'seo-social'},
         preview.image ? h('img', {src: preview.image, alt: ''}) : h('div', {className: 'seo-social-empty'}, 'Няма изображение'),
         h('div', {className: 'seo-social-text'},
@@ -103,11 +120,21 @@ export function createUi(host) {
   }
 
   function Checks({analysis}) {
-    return h('section', {className: 'seo-preview', 'aria-label': 'Проверки'},
-      h('h3', null, 'Проверки ', h(Badge, {status: analysis.status})),
+    return h(Group, {id: 'checks', icon: icons.ListChecks ?? icons.Eye, title: 'Проверки'},
+      h('p', {className: 'seo-checks-status'}, 'Оценка: ', h(Badge, {status: analysis.status})),
       h('ul', {className: 'seo-checks'},
         ...analysis.checks.map((check) => h('li', {key: check.code, className: 'seo-check seo-check-' + check.level},
           h('span', {className: 'visually-hidden'}, levelLabels[check.level] + ': '), check.message))));
+  }
+
+  /**
+   * A group of fields inside the SEO section of an editor: the platform's collapsible section, nested in the panel's
+   * own section. The open state is remembered per group, like every other section of the admin.
+   */
+  function Group({id, title, description, icon, children}) {
+    return h(C.CollapsibleSection, {title, icon, storageKey: 'seo-editor-' + id, defaultOpen: true, className: 'seo-group'},
+      description && h('p', {className: 'seo-group-hint'}, description),
+      h('div', {className: 'seo-fields'}, ...[].concat(children)));
   }
 
   const blankValues = () => Object.fromEntries(FIELD_KEYS.map((key) => [key, key === 'og_image_media_id' ? null : '']));
@@ -123,6 +150,8 @@ export function createUi(host) {
     const [image, setImage] = React.useState(null);
     const [item, setItem] = React.useState(null);
     const [error, setError] = React.useState('');
+    // Fields the user has given their own text; the others show the generated text and are not stored.
+    const [custom, setCustom] = React.useState({});
     const latest = React.useRef(null);
     const edited = React.useRef(false);
     latest.current = values;
@@ -133,6 +162,7 @@ export function createUi(host) {
       setError('');
       if (id === null) {
         setValues(blankValues());
+        setCustom({});
         setImage(null);
         return undefined;
       }
@@ -140,6 +170,7 @@ export function createUi(host) {
         if (!alive) return;
         const meta = data.item.meta;
         setValues(Object.fromEntries(FIELD_KEYS.map((key) => [key, meta[key] ?? (key === 'og_image_media_id' ? null : '')])));
+        setCustom(Object.fromEntries(FIELD_KEYS.map((key) => [key, typeof meta[key] === 'string' && meta[key] !== ''])));
         setImage(meta.og_image_media_id ? {id: meta.og_image_media_id, url: '/media-files/' + meta.og_image_media_id + '/original'} : null);
         setItem(data.item);
       }).catch((e) => { if (alive) setError(e.message); });
@@ -177,24 +208,33 @@ export function createUi(host) {
       setValues((current) => ({...current, [key]: value}));
     };
     const preview = item?.preview ?? {title: '', description: '', url: '', og_title: '', og_description: '', image: null, robots: null, site_name: ''};
+    const autoField = (key, auto, props) => h(AutoTextField, {
+      ...props,
+      value: values[key],
+      auto,
+      custom: Boolean(custom[key]),
+      onChange: (value) => { setCustom((current) => ({...current, [key]: true})); set(key)(value); },
+      onReset: () => { setCustom((current) => ({...current, [key]: false})); set(key)(''); },
+    });
     const issues = item ? item.analysis.checks.filter((check) => check.level !== 'info').length : 0;
     return h('div', {className: 'seo-panel'},
       h(Styles),
       item && h('p', {className: 'seo-panel-summary'}, h(Badge, {status: item.analysis.status}),
         issues ? ' ' + issues + (issues === 1 ? ' забележка' : ' забележки') + ' — вижте проверките вдясно.' : ' Всички основни проверки са изпълнени.'),
       h('div', {className: 'seo-edit'},
-        h('div', {className: 'seo-fields'},
-          h('h3', {className: 'seo-subheading'}, 'Търсачки'),
-          h(TextField, {label: 'SEO заглавие', value: values.seo_title, onChange: set('seo_title'), maxLength: 190, limits: LIMITS.title, placeholder: preview.title, hint: 'Празно поле използва шаблона от Настройки → SEO.'}),
-          h(TextField, {label: 'Meta описание', value: values.meta_description, onChange: set('meta_description'), maxLength: 320, multiline: true, limits: LIMITS.description, placeholder: preview.description, hint: 'Празно поле използва началото на съдържанието.'}),
-          h(TextField, {label: 'Основна ключова дума', value: values.focus_keyword, onChange: set('focus_keyword'), maxLength: 190, hint: 'Използва се само за проверките.'}),
-          h('h3', {className: 'seo-subheading'}, 'Социални мрежи'),
-          h(TextField, {label: 'Заглавие при споделяне', value: values.og_title, onChange: set('og_title'), maxLength: 190, placeholder: preview.title}),
-          h(TextField, {label: 'Описание при споделяне', value: values.og_description, onChange: set('og_description'), maxLength: 320, multiline: true, placeholder: preview.description}),
-          h(ImageField, {label: 'Изображение при споделяне', image, hint: 'Препоръчително 1200 × 630 px. Без избор се използва основното изображение.', onChange: (record) => { setImage(record); set('og_image_media_id')(record ? record.id : null); }}),
-          h('h3', {className: 'seo-subheading'}, 'Разширени'),
-          h(TextField, {label: 'Canonical URL', value: values.canonical_url, onChange: set('canonical_url'), maxLength: 500, placeholder: preview.url, hint: 'Попълнете само ако съдържанието е копие на друга страница.'})),
-        h('aside', {className: 'seo-side'},
+        h('div', {className: 'seo-groups'},
+          h(Group, {id: 'search', icon: icons.Search ?? icons.Eye, title: 'Резултати в търсачките', description: 'Заглавието и описанието, които Google и другите търсачки показват.'},
+            autoField('seo_title', preview.title, {label: 'SEO заглавие', maxLength: 190, limits: LIMITS.title, hint: 'Автоматичният текст следва шаблона от Настройки → SEO.'}),
+            autoField('meta_description', preview.description, {label: 'Meta описание', maxLength: 320, multiline: true, limits: LIMITS.description, hint: 'Автоматичният текст е началото на съдържанието.'})),
+          h(Group, {id: 'keyword', icon: icons.KeyRound ?? icons.Settings, title: 'Ключова дума', description: 'Думата или фразата, по която искате да бъдете намирани. Проверките вдясно следят къде се среща.'},
+            h(TextField, {label: 'Основна ключова дума', value: values.focus_keyword, onChange: set('focus_keyword'), maxLength: 190, hint: 'Не се показва на сайта.'})),
+          h(Group, {id: 'social', icon: icons.Share2 ?? icons.Images, title: 'Споделяне в социални мрежи', description: 'Как изглежда връзката във Facebook, LinkedIn, X и в съобщения.'},
+            autoField('og_title', preview.og_title, {label: 'Заглавие при споделяне', maxLength: 190}),
+            autoField('og_description', preview.og_description, {label: 'Описание при споделяне', maxLength: 320, multiline: true}),
+            h(ImageField, {label: 'Изображение при споделяне', image, hint: 'Препоръчително 1200 × 630 px. Без избор се използва основното изображение.', onChange: (record) => { setImage(record); set('og_image_media_id')(record ? record.id : null); }})),
+          h(Group, {id: 'advanced', icon: icons.SlidersHorizontal ?? icons.Settings, title: 'Разширени настройки', description: 'Нужни са рядко. Оставете празно, ако не сте сигурни.'},
+            autoField('canonical_url', preview.url, {label: 'Canonical URL', maxLength: 500, hint: 'Променете само ако съдържанието е копие на друга страница.'}))),
+        h('aside', {className: 'seo-side seo-groups'},
           h(SearchPreview, {preview}),
           h(SocialPreview, {preview}),
           item && h(Checks, {analysis: item.analysis}))));
