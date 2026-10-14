@@ -14,6 +14,7 @@ final class HeadRenderer
      * @param array{
      *     description?: string, canonical?: string, robots?: string|null,
      *     og?: array<string, string>, image?: array{url: string, width?: int, height?: int, alt?: string}|null,
+     *     twitter?: array{title?: string, description?: string}, modified_time?: string,
      *     twitter_site?: string, json_ld?: list<array<string, mixed>>
      * } $data
      */
@@ -34,6 +35,9 @@ final class HeadRenderer
                 $tags[] = self::meta('property', 'og:' . $property, $value);
             }
         }
+        if (($data['modified_time'] ?? '') !== '') {
+            $tags[] = self::meta('property', 'og:updated_time', $data['modified_time']);
+        }
         $image = $data['image'] ?? null;
         if (is_array($image) && ($image['url'] ?? '') !== '') {
             $tags[] = self::meta('property', 'og:image', $image['url']);
@@ -46,6 +50,17 @@ final class HeadRenderer
             }
         }
         $tags[] = self::meta('name', 'twitter:card', is_array($image) ? 'summary_large_image' : 'summary');
+        foreach (['title', 'description'] as $field) {
+            if (($data['twitter'][$field] ?? '') !== '') {
+                $tags[] = self::meta('name', 'twitter:' . $field, $data['twitter'][$field]);
+            }
+        }
+        if (is_array($image) && ($image['url'] ?? '') !== '') {
+            $tags[] = self::meta('name', 'twitter:image', $image['url']);
+            if (($image['alt'] ?? '') !== '') {
+                $tags[] = self::meta('name', 'twitter:image:alt', $image['alt']);
+            }
+        }
         if (($data['twitter_site'] ?? '') !== '') {
             $tags[] = self::meta('name', 'twitter:site', '@' . $data['twitter_site']);
         }

@@ -25,7 +25,7 @@ final readonly class AdminController
             if (str_ends_with($path, '/settings')) {
                 $settings = $method === 'PUT' ? $store->saveSettings($this->body($request)) : $store->settings();
 
-                return $this->json(['settings' => $settings, 'default_image' => $site->image((int) $settings['default_image_media_id']), 'site_name' => $site->name()]);
+                return $this->json(['settings' => $settings, 'default_image' => $site->image((int) $settings['default_image_media_id']), 'organization_logo' => $site->image((int) $settings['organization_logo_media_id']), 'site_name' => $site->name()]);
             }
             if (preg_match('~/items/(page|product|category)/(\d+|new)(/preview)?$~', $path, $match) === 1) {
                 $type = $match[1];

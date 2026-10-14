@@ -67,14 +67,17 @@ final class SeoResolver
         $canonical = $meta['canonical_url'] !== '' ? $this->site->absolute($base, $meta['canonical_url']) : $base . $path;
         $image = $this->site->image($meta['og_image_media_id'])
             ?? $this->site->image((int) ($page['featured_media_id'] ?? 0))
-            ?? $this->site->image((int) $settings['default_image_media_id']);
-        $jsonLd = [];
-        if ($home) {
-            $jsonLd[] = array_filter(['@type' => 'WebSite', 'name' => $this->site->name(), 'url' => $base . '/', 'description' => $this->site->description()]);
-        } else {
-            $trail = [['title' => $this->site->name(), 'path' => '/'], ...$this->site->ancestors($page), ['title' => $name, 'path' => $path]];
-            $jsonLd[] = $this->breadcrumbs($base, $trail);
-        }
+            ?? $this->site->image((int) $settings['default_image_media_id'])
+            ?? $this->site->image((int) $settings['organization_logo_media_id']);
+        $robots = filter_var($pageSettings['no_index'] ?? false, FILTER_VALIDATE_BOOL) ? 'noindex, follow' : null;
+        $published = is_string($page['published_at'] ?? null) && $page['published_at'] !== '' ? $page['published_at'] : null;
+        $modified = is_string($page['updated_at'] ?? null) && $page['updated_at'] !== '' ? $page['updated_at'] : $published;
+        $absoluteImage = $image === null ? null : ['url' => $this->site->absolute($base, $image['url']), 'path' => $image['url']] + $image;
+        // One connected graph (WebSite, Organization, WebPage, BreadcrumbList), as search engines read it best.
+        $trail = $home ? [] : [['title' => $this->site->name(), 'path' => '/'], ...$this->site->ancestors($page), ['title' => $name, 'path' => $path]];
+        $jsonLd = $robots === null
+            ? [['@graph' => $this->pageGraph($base, $canonical, $title, $description, $home, $trail, $absoluteImage, $published, $modified, $settings)]]
+            : [];
 
         return [
             'type' => 'page',
@@ -84,11 +87,12 @@ final class SeoResolver
             'title' => $title,
             'description' => $description,
             'canonical' => $canonical,
-            'robots' => filter_var($pageSettings['no_index'] ?? false, FILTER_VALIDATE_BOOL) ? 'noindex, follow' : null,
+            'robots' => $robots,
             'og_type' => 'website',
             'og_title' => $meta['og_title'] !== '' ? $meta['og_title'] : $title,
             'og_description' => $meta['og_description'] !== '' ? $meta['og_description'] : $description,
-            'image' => $image === null ? null : ['url' => $this->site->absolute($base, $image['url']), 'path' => $image['url']] + $image,
+            'image' => $absoluteImage,
+            'modified_time' => $modified,
             'json_ld' => $jsonLd,
             'meta' => $meta,
             'settings' => $settings,
@@ -178,13 +182,19 @@ final class SeoResolver
         ];
     }
 
+    /**
+     * Directives for pages that may be indexed: large image previews and full snippets in search results.
+     * (resolve() keeps robots null for those pages — the sitemap and the analyzer read null as "indexable".)
+     */
+    public const INDEX_ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+
     /** @param array<string, mixed> $resolved */
     public function head(array $resolved): string
     {
         return (new HeadRenderer($this->signature))->render([
             'description' => $resolved['description'],
             'canonical' => $resolved['canonical'],
-            'robots' => $resolved['robots'],
+            'robots' => $resolved['robots'] ?? self::INDEX_ROBOTS,
             'og' => [
                 'type' => $resolved['og_type'],
                 'title' => $resolved['og_title'],
@@ -193,10 +203,95 @@ final class SeoResolver
                 'site_name' => $this->site->name(),
                 'locale' => $this->site->ogLocale(),
             ],
+            'modified_time' => (string) ($resolved['modified_time'] ?? ''),
             'image' => $resolved['image'],
+            'twitter' => ['title' => $resolved['og_title'], 'description' => $resolved['og_description']],
             'twitter_site' => (string) $resolved['settings']['twitter_site'],
             'json_ld' => $resolved['json_ld'],
         ]);
+    }
+
+    /**
+     * @param list<array{title: string, path: string}> $trail Empty for the home page.
+     * @param array<string, mixed>|null $image Absolute image of the page.
+     * @param array<string, mixed> $settings
+     * @return list<array<string, mixed>>
+     */
+    private function pageGraph(string $base, string $url, string $title, string $description, bool $home, array $trail, ?array $image, ?string $published, ?string $modified, array $settings): array
+    {
+        $language = $this->site->locale();
+        $websiteId = $base . '/#website';
+        $organization = $this->organization($base, $settings);
+        $pageId = $url . '#webpage';
+        $page = array_filter([
+            '@type' => 'WebPage',
+            '@id' => $pageId,
+            'url' => $url,
+            'name' => $title,
+            'description' => $description,
+            'isPartOf' => ['@id' => $websiteId],
+            'about' => $home ? ['@id' => $organization['@id']] : null,
+            'primaryImageOfPage' => $image === null ? null : array_filter([
+                '@type' => 'ImageObject',
+                'url' => $image['url'],
+                'width' => ($image['width'] ?? 0) > 0 ? $image['width'] : null,
+                'height' => ($image['height'] ?? 0) > 0 ? $image['height'] : null,
+                'caption' => ($image['alt'] ?? '') !== '' ? $image['alt'] : null,
+            ]),
+            'datePublished' => $published,
+            'dateModified' => $modified,
+            'breadcrumb' => $trail === [] ? null : ['@id' => $url . '#breadcrumb'],
+            'inLanguage' => $language,
+        ], static fn(mixed $value): bool => $value !== null && $value !== '');
+        $graph = [
+            array_filter([
+                '@type' => 'WebSite',
+                '@id' => $websiteId,
+                'url' => $base . '/',
+                'name' => $this->site->name(),
+                'description' => $this->site->description(),
+                'publisher' => ['@id' => $organization['@id']],
+                'inLanguage' => $language,
+            ], static fn(mixed $value): bool => $value !== ''),
+            $organization,
+            $page,
+        ];
+        if ($trail !== []) {
+            $graph[] = ['@id' => $url . '#breadcrumb'] + $this->breadcrumbs($base, $trail);
+        }
+
+        return $graph;
+    }
+
+    /**
+     * The company (or person) behind the site: name, logo and official profiles.
+     *
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed>
+     */
+    private function organization(string $base, array $settings): array
+    {
+        $type = $settings['organization_type'] === 'Person' ? 'Person' : 'Organization';
+        $name = trim((string) $settings['organization_name']) !== '' ? trim((string) $settings['organization_name']) : $this->site->name();
+        $node = ['@type' => $type, '@id' => $base . '/#' . strtolower($type), 'name' => $name, 'url' => $base . '/'];
+        $logo = $this->site->image((int) $settings['organization_logo_media_id']);
+        if ($logo !== null) {
+            $logoNode = array_filter([
+                '@type' => 'ImageObject',
+                'url' => $this->site->absolute($base, $logo['url']),
+                'width' => $logo['width'] > 0 ? $logo['width'] : null,
+                'height' => $logo['height'] > 0 ? $logo['height'] : null,
+                'caption' => $name,
+            ], static fn(mixed $value): bool => $value !== null);
+            // schema.org: an Organization has a logo, a Person an image.
+            $node[$type === 'Person' ? 'image' : 'logo'] = $logoNode;
+        }
+        $profiles = array_values(array_filter(array_map('trim', preg_split('/\R/u', (string) $settings['same_as']) ?: []), static fn(string $line): bool => $line !== ''));
+        if ($profiles !== []) {
+            $node['sameAs'] = $profiles;
+        }
+
+        return $node;
     }
 
     public function template(string $template, string $title): string

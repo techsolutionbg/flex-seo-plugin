@@ -2,7 +2,7 @@
 
 Search engine optimisation for Flex CMS: titles, meta descriptions, canonical URLs, Open Graph and X (Twitter) cards, Schema.org structured data, `sitemap.xml`, `robots.txt` and content checks for pages and Flex Commerce products.
 
-Version: **0.4.0** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.60**.
+Version: **0.5.1** · ID: `flex/seo` · Minimum Flex CMS version: **0.1.60**.
 
 GitHub repository: `techsolutionbg/flex-seo-plugin`.
 
@@ -54,15 +54,15 @@ Through the `public.head` and `public.title` filters the plugin adds:
 - `<title>` from the SEO title or the title template, for example `{title} | {site}`
 - `<meta name="description">`
 - `<link rel="canonical">` with an absolute URL
-- `<meta name="robots">` for pages with `no_index`, filtered or searched catalogue listings, error pages, cart, favourites, checkout and order pages
-- Open Graph: `og:type`, `og:title`, `og:description`, `og:url`, `og:site_name`, `og:locale` and `og:image` with size and alternative text
-- `twitter:card` and the optional `twitter:site` account
+- `<meta name="robots">`: `noindex` for pages with `no_index`, filtered or searched catalogue listings, error pages, cart, favourites, checkout and order pages; every other page gets `index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1` (0.5.0+)
+- Open Graph: `og:type`, `og:title`, `og:description`, `og:url`, `og:site_name`, `og:locale`, `og:updated_time` (pages) and `og:image` with size and alternative text. The image is the SEO image, else the featured image, else the default image, else the organisation logo
+- X (Twitter): `twitter:card`, `twitter:title`, `twitter:description`, `twitter:image`, `twitter:image:alt` and the optional `twitter:site` account
 - JSON-LD:
-  - `WebSite` on the home page
-  - `BreadcrumbList` on other pages, categories and products
+  - CMS pages (0.5.0+): one connected `@graph` — `WebSite`, `Organization` or `Person` (name, logo, `sameAs` profiles), `WebPage` (description, image, `datePublished`, `dateModified`, language) and `BreadcrumbList` on pages other than the home page. Pages hidden from search engines get no structured data
+  - `BreadcrumbList` on categories and products
   - `Product` with `Offer` (price, currency, availability, SKU, images) on product pages
 
-The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.4.0 -->` and `<!-- / Flex SEO 0.4.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
+The tags are wrapped in the HTML comments `<!-- This site is optimized with Flex SEO 0.5.0 -->` and `<!-- / Flex SEO 0.5.0 -->`, with the plugin name and version from `plugin.json`. All values are escaped. JSON-LD is encoded so that text cannot close the `<script>` element. Every tag carries `data-flex-seo`, so themes with client-side navigation can replace them on page change; Flex Starter 1.0.7 does this. An error while building the tags is logged and never breaks the page.
 
 Absolute URLs use the **Site address** setting, then `APP_URL`, then the address of the request.
 
@@ -98,6 +98,7 @@ The checks cover:
 **Settings → SEO** covers:
 
 - the title template and home page title
+- the organisation (0.5.0+): company or person, name, logo and social profiles for structured data
 - the default social image
 - the X (Twitter) account
 - the site address

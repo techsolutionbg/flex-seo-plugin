@@ -81,15 +81,9 @@ export function createUi(host) {
       hint && h('small', {className: 'react-field-hint'}, hint));
   }
 
-  function ImageField({label, hint, image, onChange}) {
-    const [open, setOpen] = React.useState(false);
-    return h('div', {className: 'react-form-field seo-image-field'}, label,
-      image && h('img', {src: image.thumbnail_url || image.url, alt: image.alt || '', className: 'seo-image-thumb'}),
-      h('div', {className: 'seo-actions'},
-        h(C.LoadingButton, {type: 'button', icon: h(icons.Image), onClick: () => setOpen(true)}, image ? 'Смени изображението' : 'Избери изображение'),
-        image && h(C.LoadingButton, {type: 'button', icon: h(icons.X), onClick: () => onChange(null)}, 'Премахни')),
-      hint && h('small', {className: 'react-field-hint'}, hint),
-      h(C.MediaPicker, {open, imagesOnly: true, onClose: () => setOpen(false), onSelect: (record) => { setOpen(false); onChange(record); }}));
+  function mediaId(value) {
+    const id = Number(value);
+    return Number.isInteger(id) && id > 0 ? id : null;
   }
 
   function SearchPreview({preview}) {
@@ -147,7 +141,6 @@ export function createUi(host) {
     const type = context?.type ?? 'page';
     const id = context?.id ?? null;
     const [values, setValues] = React.useState(null);
-    const [image, setImage] = React.useState(null);
     const [item, setItem] = React.useState(null);
     const [error, setError] = React.useState('');
     // Fields the user has given their own text; the others show the generated text and are not stored.
@@ -163,7 +156,6 @@ export function createUi(host) {
       if (id === null) {
         setValues(blankValues());
         setCustom({});
-        setImage(null);
         return undefined;
       }
       request(BASE + '/items/' + type + '/' + id).then((data) => {
@@ -171,7 +163,6 @@ export function createUi(host) {
         const meta = data.item.meta;
         setValues(Object.fromEntries(FIELD_KEYS.map((key) => [key, meta[key] ?? (key === 'og_image_media_id' ? null : '')])));
         setCustom(Object.fromEntries(FIELD_KEYS.map((key) => [key, typeof meta[key] === 'string' && meta[key] !== ''])));
-        setImage(meta.og_image_media_id ? {id: meta.og_image_media_id, url: '/media-files/' + meta.og_image_media_id + '/original'} : null);
         setItem(data.item);
       }).catch((e) => { if (alive) setError(e.message); });
       return () => { alive = false; };
@@ -231,7 +222,7 @@ export function createUi(host) {
           h(Group, {id: 'social', icon: icons.Share2 ?? icons.Images, title: 'Споделяне в социални мрежи', description: 'Как изглежда връзката във Facebook, LinkedIn, X и в съобщения.'},
             autoField('og_title', preview.og_title, {label: 'Заглавие при споделяне', maxLength: 190}),
             autoField('og_description', preview.og_description, {label: 'Описание при споделяне', maxLength: 320, multiline: true}),
-            h(ImageField, {label: 'Изображение при споделяне', image, hint: 'Препоръчително 1200 × 630 px. Без избор се използва основното изображение.', onChange: (record) => { setImage(record); set('og_image_media_id')(record ? record.id : null); }})),
+            h(C.ImageField, {label: 'Изображение при споделяне', value: mediaId(values.og_image_media_id), aspectRatio: '1.91 / 1', fit: 'cover', width: '20rem', description: 'Препоръчително 1200 × 630 px. Без избор се използва основното изображение.', onChange: set('og_image_media_id')})),
           h(Group, {id: 'advanced', icon: icons.SlidersHorizontal ?? icons.Settings, title: 'Разширени настройки', description: 'Нужни са рядко. Оставете празно, ако не сте сигурни.'},
             autoField('canonical_url', preview.url, {label: 'Canonical URL', maxLength: 500, hint: 'Променете само ако съдържанието е копие на друга страница.'}))),
         h('aside', {className: 'seo-side seo-groups'},
@@ -243,14 +234,12 @@ export function createUi(host) {
   /** Global settings in Settings → SEO. */
   function SettingsForm() {
     const [values, setValues] = React.useState(null);
-    const [image, setImage] = React.useState(null);
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState('');
     const changed = host.useWorkspaceChanged?.();
     const saved = host.useWorkspaceSaved?.();
     function load(data) {
       setValues(data.settings);
-      setImage(data.default_image);
     }
     React.useEffect(() => {
       request(BASE + '/settings').then(load).catch((e) => setError(e.message));
@@ -279,9 +268,19 @@ export function createUi(host) {
           h('div', {className: 'seo-fields'},
             h(TextField, {label: 'Шаблон на заглавието', value: values.title_template, onChange: set('title_template'), maxLength: 190, hint: '{title} е заглавието на страницата или продукта, {site} е името на сайта. Пример: {title} | {site}'}),
             h(TextField, {label: 'Заглавие на началната страница', value: values.home_title, onChange: set('home_title'), maxLength: 190, limits: LIMITS.title, hint: 'Празно поле използва шаблона.'}))),
+        h(C.CollapsibleSection, {title: 'Организация', icon: icons.Settings, storageKey: 'seo-settings-organization', defaultOpen: true},
+          h('div', {className: 'seo-fields'},
+            h('label', {className: 'react-form-field'}, 'Кой стои зад сайта',
+              h('select', {className: 'react-ui-input', value: values.organization_type, onChange: (e) => set('organization_type')(e.target.value)},
+                h('option', {value: 'Organization'}, 'Фирма или организация'),
+                h('option', {value: 'Person'}, 'Лице (личен сайт, фрийлансър)')),
+              h('small', {className: 'react-field-hint'}, 'За структурираните данни (JSON-LD), от които Google показва името и логото.')),
+            h(TextField, {label: values.organization_type === 'Person' ? 'Име' : 'Име на фирмата', value: values.organization_name, onChange: set('organization_name'), maxLength: 190, hint: 'Празно поле използва името на сайта.'}),
+            h(C.ImageField, {label: values.organization_type === 'Person' ? 'Снимка' : 'Лого', value: mediaId(values.organization_logo_media_id), background: 'light', aspectRatio: '1 / 1', description: 'Квадратно или хоризонтално лого, поне 112×112 px. Използва се и при споделяне, когато страницата няма друго изображение.', onChange: (id) => set('organization_logo_media_id')(id ?? 0)}),
+            h(TextField, {label: 'Профили в социалните мрежи', value: values.same_as, onChange: set('same_as'), maxLength: 3000, multiline: true, placeholder: 'https://www.facebook.com/…\nhttps://www.linkedin.com/company/…', hint: 'По един пълен адрес на ред — Facebook, LinkedIn, Instagram, YouTube и др.'}))),
         h(C.CollapsibleSection, {title: 'Споделяне', icon: icons.Images, storageKey: 'seo-settings-social', defaultOpen: true},
           h('div', {className: 'seo-fields'},
-            h(ImageField, {label: 'Изображение по подразбиране', image, hint: 'Използва се, когато страница или продукт нямат изображение.', onChange: (record) => { setImage(record); set('default_image_media_id')(record ? record.id : 0); }}),
+            h(C.ImageField, {label: 'Изображение по подразбиране', value: mediaId(values.default_image_media_id), aspectRatio: '1.91 / 1', fit: 'cover', width: '20rem', description: 'Използва се, когато страница или продукт нямат изображение.', onChange: (id) => set('default_image_media_id')(id ?? 0)}),
             h(TextField, {label: 'Профил в X (Twitter)', value: values.twitter_site, onChange: set('twitter_site'), maxLength: 16, placeholder: '@profil'}))),
         h(C.CollapsibleSection, {title: 'Sitemap и robots.txt', icon: icons.Settings, storageKey: 'seo-settings-sitemap', defaultOpen: true},
           h('div', {className: 'seo-fields'},
@@ -358,7 +357,7 @@ export function createUi(host) {
     return h('div', {className: 'seo-settings-tab'}, h(Styles), h(SettingsForm), h(SiteCheck, {navigate}));
   }
 
-  const ui = {Badge, EditorPanel, SettingsTab, SettingsForm, SiteCheck, SearchPreview, SocialPreview, Checks, TextField, ImageField};
+  const ui = {Badge, EditorPanel, SettingsTab, SettingsForm, SiteCheck, SearchPreview, SocialPreview, Checks, TextField};
   cache.set(host, ui);
   return ui;
 }

@@ -23,6 +23,12 @@ final class SeoStore
         'home_title' => '',
         'default_image_media_id' => 0,
         'twitter_site' => '',
+        // Who stands behind the site, for the Organization/Person node in JSON-LD (Google knowledge panel, logo).
+        'organization_type' => 'Organization',
+        'organization_name' => '',
+        'organization_logo_media_id' => 0,
+        // Official profiles (Facebook, LinkedIn, Instagram…), one URL per line → schema.org sameAs.
+        'same_as' => '',
         'site_url' => '',
         'sitemap_pages' => true,
         'sitemap_products' => true,
@@ -181,6 +187,25 @@ final class SeoStore
         if ($values['default_image_media_id'] > 0 && !$this->imageExists($values['default_image_media_id'])) {
             throw new \InvalidArgumentException('Избраното изображение не е намерено.', 422);
         }
+        if (!in_array($values['organization_type'], ['Organization', 'Person'], true)) {
+            throw new \InvalidArgumentException('Изберете фирма/организация или лице.', 422);
+        }
+        if (mb_strlen($values['organization_name']) > 190 || self::unsafeText($values['organization_name'])) {
+            throw new \InvalidArgumentException('Името на организацията е невалидно.', 422);
+        }
+        if ($values['organization_logo_media_id'] > 0 && !$this->imageExists($values['organization_logo_media_id'])) {
+            throw new \InvalidArgumentException('Избраното лого не е намерено.', 422);
+        }
+        $profiles = array_values(array_filter(array_map('trim', preg_split('/\R/u', $values['same_as']) ?: []), static fn(string $line): bool => $line !== ''));
+        if (count($profiles) > 20 || mb_strlen($values['same_as']) > 3000) {
+            throw new \InvalidArgumentException('Профилите в социалните мрежи са до 20 адреса.', 422);
+        }
+        foreach ($profiles as $profile) {
+            if (mb_strlen($profile) > 500 || !self::absoluteUrl($profile)) {
+                throw new \InvalidArgumentException('Всеки профил трябва да е пълен HTTP или HTTPS адрес на отделен ред.', 422);
+            }
+        }
+        $values['same_as'] = implode("\n", $profiles);
         $this->db->table('flex_seo_settings')->where('id', 1)->update(['values' => json_encode($values, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)]);
 
         return $this->settings();
